@@ -16,7 +16,6 @@ type UserInfo struct {
 	Uuid        string `json:"uuid"`
 	SpeedLimit  int    `json:"speed_limit"`
 	DeviceLimit int    `json:"device_limit"`
-	AliveIp     int    `json:"alive_ip"`
 }
 
 type UserListBody struct {
@@ -24,62 +23,60 @@ type UserListBody struct {
 	Users []UserInfo `json:"users"`
 }
 
-// GetUserList will pull user form sspanel
-func (c *Client) GetUserList() (UserList []UserInfo, err error) {
+type AliveMap struct {
+	Alive map[int]int `json:"alive"`
+}
+
+// GetUserList will pull user from v2board
+func (c *Client) GetUserList() ([]UserInfo, error) {
 	const path = "/api/v1/server/UniProxy/user"
 	r, err := c.client.R().
 		SetHeader("If-None-Match", c.userEtag).
 		ForceContentType("application/json").
 		Get(path)
+	if r == nil || r.RawResponse == nil {
+		return nil, fmt.Errorf("received nil response or raw response")
+	}
+	defer r.RawResponse.Body.Close()
+
+	if r.StatusCode() == 304 {
+		return nil, nil
+	}
+
 	if err = c.checkResponse(r, path, err); err != nil {
 		return nil, err
 	}
-
-	if r != nil {
-		defer func() {
-			if r.RawBody() != nil {
-				r.RawBody().Close()
-			}
-		}()
-		if r.StatusCode() == 304 {
-			return nil, nil
-		}
-	} else {
-		return nil, fmt.Errorf("received nil response")
-	}
-	var userList *UserListBody
-	if err != nil {
-		return nil, fmt.Errorf("read body error: %s", err)
-	}
-	if err := json.Unmarshal(r.Body(), &userList); err != nil {
-		return nil, fmt.Errorf("unmarshal userlist error: %s", err)
+	userlist := &UserListBody{}
+	if err := json.Unmarshal(r.Body(), userlist); err != nil {
+		return nil, fmt.Errorf("unmarshal user list error: %w", err)
 	}
 	c.userEtag = r.Header().Get("ETag")
+	return userlist.Users, nil
+}
 
-	var userinfos []UserInfo
-	var deviceLimit, localDeviceLimit int = 0, 0
-	for _, user := range userList.Users {
-		// If there is still device available, add the user
-		if user.DeviceLimit > 0 && user.AliveIp > 0 {
-			lastOnline := 0
-			if v, ok := c.LastReportOnline[user.Id]; ok {
-				lastOnline = v
-			}
-			// If there are any available device.
-			localDeviceLimit = user.DeviceLimit - user.AliveIp + lastOnline
-			if localDeviceLimit > 0 {
-				deviceLimit = localDeviceLimit
-			} else if lastOnline > 0 {
-				deviceLimit = lastOnline
-			} else {
-				continue
-			}
-		}
-		user.DeviceLimit = deviceLimit
-		userinfos = append(userinfos, user)
+// GetUserAlive will fetch the alive_ip count for users
+func (c *Client) GetUserAlive() (map[int]int, error) {
+	c.AliveMap = &AliveMap{}
+	const path = "/api/v1/server/UniProxy/alivelist"
+	r, err := c.client.R().
+		ForceContentType("application/json").
+		Get(path)
+	if err != nil || r.StatusCode() >= 399 {
+		c.AliveMap.Alive = make(map[int]int)
+		return c.AliveMap.Alive, nil
+	}
+	if r == nil || r.RawResponse == nil {
+		fmt.Printf("received nil response or raw response")
+		c.AliveMap.Alive = make(map[int]int)
+		return c.AliveMap.Alive, nil
+	}
+	defer r.RawResponse.Body.Close()
+	if err := json.Unmarshal(r.Body(), c.AliveMap); err != nil {
+		fmt.Printf("unmarshal user alive list error: %s", err)
+		c.AliveMap.Alive = make(map[int]int)
 	}
 
-	return userinfos, nil
+	return c.AliveMap.Alive, nil
 }
 
 type UserTraffic struct {
@@ -106,8 +103,7 @@ func (c *Client) ReportUserTraffic(userTraffic []UserTraffic) error {
 	return nil
 }
 
-func (c *Client) ReportNodeOnlineUsers(data *map[int][]string, reportOnline *map[int]int) error {
-	c.LastReportOnline = *reportOnline
+func (c *Client) ReportNodeOnlineUsers(data *map[int][]string) error {
 	const path = "/api/v1/server/UniProxy/alive"
 	r, err := c.client.R().
 		SetBody(data).
