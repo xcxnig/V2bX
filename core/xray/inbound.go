@@ -190,7 +190,7 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 		return nil
 	}
 
-	t := coreConf.TransportProtocol(nodeInfo.VAllss.Network)
+	t := coreConf.TransportProtocol(v.Network)
 	inbound.StreamSetting = &coreConf.StreamConfig{Network: &t}
 	switch v.Network {
 	case "tcp":
@@ -204,9 +204,19 @@ func buildV2ray(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCon
 			return fmt.Errorf("unmarshal ws settings error: %s", err)
 		}
 	case "grpc":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCConfig)
+		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal grpc settings error: %s", err)
+		}
+	case "httpupgrade":
+		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.HTTPUPGRADESettings)
+		if err != nil {
+			return fmt.Errorf("unmarshal httpupgrade settings error: %s", err)
+		}
+	case "splithttp", "xhttp":
+		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.SplitHTTPSettings)
+		if err != nil {
+			return fmt.Errorf("unmarshal xhttp settings error: %s", err)
 		}
 	default:
 		return errors.New("the network type is not vail")
@@ -252,7 +262,7 @@ func buildTrojan(config *conf.Options, nodeInfo *panel.NodeInfo, inbound *coreCo
 			return fmt.Errorf("unmarshal ws settings error: %s", err)
 		}
 	case "grpc":
-		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCConfig)
+		err := json.Unmarshal(v.NetworkSettings, &inbound.StreamSetting.GRPCSettings)
 		if err != nil {
 			return fmt.Errorf("unmarshal grpc settings error: %s", err)
 		}

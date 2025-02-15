@@ -13,11 +13,11 @@ import (
 
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/conf"
-	"github.com/apernet/hysteria/core/server"
-	"github.com/apernet/hysteria/extras/correctnet"
-	"github.com/apernet/hysteria/extras/masq"
-	"github.com/apernet/hysteria/extras/obfs"
-	"github.com/apernet/hysteria/extras/outbounds"
+	"github.com/apernet/hysteria/core/v2/server"
+	"github.com/apernet/hysteria/extras/v2/correctnet"
+	"github.com/apernet/hysteria/extras/v2/masq"
+	"github.com/apernet/hysteria/extras/v2/obfs"
+	"github.com/apernet/hysteria/extras/v2/outbounds"
 	"go.uber.org/zap"
 )
 
@@ -284,15 +284,23 @@ func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.Pac
 		}
 		u, err := url.Parse(c.Masquerade.Proxy.URL)
 		if err != nil {
-			return nil, fmt.Errorf(fmt.Sprintf("masquerade.proxy.url %s", err))
+			return nil, fmt.Errorf("masquerade.proxy.url %s", err)
 		}
 		handler = &httputil.ReverseProxy{
-			Rewrite: func(r *httputil.ProxyRequest) {
-				r.SetURL(u)
-				// SetURL rewrites the Host header,
-				// but we don't want that if rewriteHost is false
-				if !c.Masquerade.Proxy.RewriteHost {
-					r.Out.Host = r.In.Host
+			Director: func(req *http.Request) {
+				req.URL.Scheme = u.Scheme
+				req.URL.Host = u.Host
+
+				if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+					xff := req.Header.Get("X-Forwarded-For")
+					if xff != "" {
+						clientIP = xff + ", " + clientIP
+					}
+					req.Header.Set("X-Forwarded-For", clientIP)
+				}
+
+				if c.Masquerade.Proxy.RewriteHost {
+					req.Host = req.URL.Host
 				}
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -334,7 +342,7 @@ func (n *Hysteria2node) getMasqHandler(tlsconfig *server.TLSConfig, conn net.Pac
 		s := masq.MasqTCPServer{
 			QUICPort:  extractPortFromAddr(conn.LocalAddr().String()),
 			HTTPSPort: extractPortFromAddr(c.Masquerade.ListenHTTPS),
-			Handler:   &masqHandlerLogWrapper{H: handler, QUIC: false},
+			Handler:   &masqHandlerLogWrapper{H: handler, QUIC: false, Logger: n.Logger},
 			TLSConfig: &tls.Config{
 				Certificates:   tlsconfig.Certificates,
 				GetCertificate: tlsconfig.GetCertificate,
@@ -374,7 +382,7 @@ func (n *Hysteria2node) getHyConfig(info *panel.NodeInfo, config *conf.Options, 
 		Conn:                  conn,
 		Outbound:              Outbound,
 		BandwidthConfig:       *n.getBandwidthConfig(info),
-		IgnoreClientBandwidth: c.IgnoreClientBandwidth,
+		IgnoreClientBandwidth: info.Hysteria2.Ignore_Client_Bandwidth,
 		DisableUDP:            c.DisableUDP,
 		UDPIdleTimeout:        c.UDPIdleTimeout,
 		EventLogger:           n.EventLogger,

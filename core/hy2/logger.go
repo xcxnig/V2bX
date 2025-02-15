@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/InazumaV/V2bX/common/format"
 	"github.com/InazumaV/V2bX/limiter"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,12 +47,18 @@ var logFormatMap = map[string]zapcore.EncoderConfig{
 }
 
 func (l *serverLogger) Connect(addr net.Addr, uuid string, tx uint64) {
-	limiter, err := limiter.GetLimiter(l.Tag)
+	limiterinfo, err := limiter.GetLimiter(l.Tag)
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiter.CheckLimit(uuid, extractIPFromAddr(addr), addr.Network() == "tcp"); r {
-		l.logger.Warn("Need Reject", zap.String("addr", addr.String()), zap.String("uuid", uuid))
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+		}
+	} else {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+		}
 	}
 	l.logger.Info("client connected", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint64("tx", tx))
 }
@@ -61,12 +68,18 @@ func (l *serverLogger) Disconnect(addr net.Addr, uuid string, err error) {
 }
 
 func (l *serverLogger) TCPRequest(addr net.Addr, uuid, reqAddr string) {
-	limiter, err := limiter.GetLimiter(l.Tag)
+	limiterinfo, err := limiter.GetLimiter(l.Tag)
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiter.CheckLimit(uuid, extractIPFromAddr(addr), addr.Network() == "tcp"); r {
-		l.logger.Warn("Need Reject", zap.String("addr", addr.String()), zap.String("uuid", uuid))
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+		}
+	} else {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+		}
 	}
 	l.logger.Debug("TCP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.String("reqAddr", reqAddr))
 }
@@ -80,12 +93,18 @@ func (l *serverLogger) TCPError(addr net.Addr, uuid, reqAddr string, err error) 
 }
 
 func (l *serverLogger) UDPRequest(addr net.Addr, uuid string, sessionId uint32, reqAddr string) {
-	limiter, err := limiter.GetLimiter(l.Tag)
+	limiterinfo, err := limiter.GetLimiter(l.Tag)
 	if err != nil {
 		l.logger.Panic("Get limiter error", zap.String("tag", l.Tag), zap.Error(err))
 	}
-	if _, r := limiter.CheckLimit(uuid, extractIPFromAddr(addr), addr.Network() == "tcp"); r {
-		l.logger.Warn("Need Reject", zap.String("addr", addr.String()), zap.String("uuid", uuid))
+	if _, r := limiterinfo.CheckLimit(format.UserTag(l.Tag, uuid), extractIPFromAddr(addr), addr.Network() == "tcp", true); r {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = true
+		}
+	} else {
+		if userLimit, ok := limiterinfo.UserLimitInfo.Load(format.UserTag(l.Tag, uuid)); ok {
+			userLimit.(*limiter.UserLimitInfo).OverLimit = false
+		}
 	}
 	l.logger.Debug("UDP request", zap.String("addr", addr.String()), zap.String("uuid", uuid), zap.Uint32("sessionId", sessionId), zap.String("reqAddr", reqAddr))
 }
@@ -101,11 +120,11 @@ func (l *serverLogger) UDPError(addr net.Addr, uuid string, sessionId uint32, er
 func initLogger(logLevel string, logFormat string) (*zap.Logger, error) {
 	level, ok := logLevelMap[strings.ToLower(logLevel)]
 	if !ok {
-		return nil, fmt.Errorf(fmt.Sprintf("unsupported log level: %s\n", logLevel))
+		return nil, fmt.Errorf("unsupported log level: %s", logLevel)
 	}
 	enc, ok := logFormatMap[strings.ToLower(logFormat)]
 	if !ok {
-		return nil, fmt.Errorf(fmt.Sprintf("unsupported log format: %s\n", logFormat))
+		return nil, fmt.Errorf("unsupported log format: %s", logFormat)
 	}
 	c := zap.Config{
 		Level:             zap.NewAtomicLevelAt(level),
@@ -118,7 +137,7 @@ func initLogger(logLevel string, logFormat string) (*zap.Logger, error) {
 	}
 	logger, err := c.Build()
 	if err != nil {
-		return nil, fmt.Errorf(fmt.Sprintf("failed to initialize logger: %s\n", err))
+		return nil, fmt.Errorf("failed to initialize logger: %s", err)
 	}
 	return logger, nil
 }

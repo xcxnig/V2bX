@@ -7,7 +7,7 @@ import (
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/common/counter"
 	vCore "github.com/InazumaV/V2bX/core"
-	"github.com/apernet/hysteria/core/server"
+	"github.com/apernet/hysteria/core/v2/server"
 )
 
 var _ server.Authenticator = &V2bX{}
@@ -41,7 +41,7 @@ func (h *Hysteria2) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	return len(p.Users), nil
 }
 
-func (h *Hysteria2) DelUsers(users []panel.UserInfo, tag string) error {
+func (h *Hysteria2) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeInfo) error {
 	var wg sync.WaitGroup
 	for _, user := range users {
 		wg.Add(1)

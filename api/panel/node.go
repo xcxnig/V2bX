@@ -2,7 +2,6 @@ package panel
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"reflect"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/InazumaV/V2bX/common/crypt"
 	"github.com/goccy/go-json"
 )
 
@@ -111,10 +109,11 @@ type HysteriaNode struct {
 
 type Hysteria2Node struct {
 	CommonNode
-	UpMbps       int    `json:"up_mbps"`
-	DownMbps     int    `json:"down_mbps"`
-	ObfsType     string `json:"obfs"`
-	ObfsPassword string `json:"obfs-password"`
+	Ignore_Client_Bandwidth bool   `json:"ignore_client_bandwidth"`
+	UpMbps                  int    `json:"up_mbps"`
+	DownMbps                int    `json:"down_mbps"`
+	ObfsType                string `json:"obfs"`
+	ObfsPassword            string `json:"obfs-password"`
 }
 
 type RawDNS struct {
@@ -186,18 +185,6 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		cm = &rsp.CommonNode
 		node.VAllss = rsp
 		node.Security = node.VAllss.Tls
-		if len(rsp.NetworkSettings) > 0 {
-			err = json.Unmarshal(rsp.NetworkSettings, &rsp.RealityConfig)
-			if err != nil {
-				return nil, fmt.Errorf("decode reality config error: %s", err)
-			}
-		}
-		if node.Security == Reality {
-			if rsp.TlsSettings.PrivateKey == "" {
-				key := crypt.GenX25519Private([]byte("vless" + c.Token))
-				rsp.TlsSettings.PrivateKey = base64.RawURLEncoding.EncodeToString(key)
-			}
-		}
 	case "shadowsocks":
 		rsp := &ShadowsocksNode{}
 		err = json.Unmarshal(r.Body(), rsp)
